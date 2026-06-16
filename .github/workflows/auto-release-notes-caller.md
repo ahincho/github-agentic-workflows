@@ -15,8 +15,70 @@ network:
     - github
 tools:
   github:
-    toolsets: [default]
+    mode: gh-proxy
   bash: true
+steps:
+  - name: Pre-fetch commit data
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    run: |
+      mkdir -p /tmp/gh-aw/data
+      REPO_NAME=$(echo "$GITHUB_REPOSITORY" | cut -d'/' -f2)
+      SHA_SHORT=$(echo "$GITHUB_SHA" | cut -c1-7)
+      TODAY=$(date -u +%Y-%m-%d)
+      TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+      # Commits recientes con metadata estructurada
+      git log --format='{"sha":"%H","sha_short":"%h","author":"%an","date":"%ai","subject":"%s"}' -20 \
+        | jq -s '.' > /tmp/gh-aw/data/commits.json
+
+      # Estadísticas del diff actual
+      git diff HEAD~1 HEAD --stat 2>/dev/null \
+        | tail -1 > /tmp/gh-aw/data/diff_stat.txt \
+        || echo "first-commit" > /tmp/gh-aw/data/diff_stat.txt
+
+      # Diff completo (limitado a 8000 chars para no saturar contexto)
+      git diff HEAD~1 HEAD 2>/dev/null \
+        | head -c 8000 > /tmp/gh-aw/data/diff.patch \
+        || find . -type f -not -path './.git/*' -not -path './docs-drafts/*' \
+             | sort | head -100 > /tmp/gh-aw/data/diff.patch
+
+      # Verificar si ya existe un PR de borrador para este SHA
+      EXISTING_PR=$(gh pr list \
+        --head "docs-draft/$SHA_SHORT" \
+        --state open \
+        --json number,title \
+        --repo "$GITHUB_REPOSITORY" 2>/dev/null || echo "[]")
+
+      # Metadata del contexto
+      jq -n \
+        --arg repo "$GITHUB_REPOSITORY" \
+        --arg repo_name "$REPO_NAME" \
+        --arg sha "$GITHUB_SHA" \
+        --arg sha_short "$SHA_SHORT" \
+        --arg branch "$GITHUB_REF_NAME" \
+        --arg today "$TODAY" \
+        --arg timestamp "$TIMESTAMP" \
+        --argjson existing_prs "$EXISTING_PR" \
+        '{
+          repository: $repo,
+          repo_name: $repo_name,
+          sha: $sha,
+          sha_short: $sha_short,
+          branch: $branch,
+          today: $today,
+          timestamp: $timestamp,
+          draft_filename: ("docs-drafts/" + $today + "-" + $repo_name + "-" + $sha_short + ".md"),
+          pr_branch: $sha_short,
+          existing_draft_prs: $existing_prs
+        }' > /tmp/gh-aw/data/context.json
+
+      echo "=== Context ==="
+      cat /tmp/gh-aw/data/context.json
+      echo "=== Commits (top 5) ==="
+      jq '.[0:5]' /tmp/gh-aw/data/commits.json
+      echo "=== Diff stat ==="
+      cat /tmp/gh-aw/data/diff_stat.txt
 safe-outputs:
   create-pull-request:
     title-prefix: "📄 [docs-draft] "
@@ -33,173 +95,109 @@ safe-outputs:
 
 # auto-release-notes-draft
 
-Actúa como **Technical Writer y Arquitecto de Documentación**. Analiza los commits del push actual y genera un **borrador de documentación** en markdown para revisión humana, antes de publicar nada en Confluence.
+Actúa como **Technical Writer y Arquitecto de Documentación**. Genera un **borrador de documentación** en markdown para revisión humana, antes de publicar en Confluence.
 
-**⚠️ REGLA ABSOLUTA: No uses Confluence ni ningún MCP externo en este workflow. Solo crea el archivo markdown local y el PR.**
+**⚠️ REGLAS ABSOLUTAS:**
+- No uses Confluence ni ningún MCP externo.
+- No corras `git log` ni `git diff` — los datos ya están pre-cargados en `/tmp/gh-aw/data/`.
 
-## Paso 0: Leer configuración del entorno
-
-```bash
-REPO_NAME=$(echo "$GITHUB_REPOSITORY" | cut -d'/' -f2)
-SHA_SHORT=$(echo "$GITHUB_SHA" | cut -c1-7)
-TODAY=$(date -u +%Y-%m-%d)
-echo "GITHUB_REPOSITORY=$GITHUB_REPOSITORY"
-echo "GITHUB_REF_NAME=$GITHUB_REF_NAME"
-echo "GITHUB_SHA=$GITHUB_SHA"
-echo "REPO_NAME=$REPO_NAME | SHA_SHORT=$SHA_SHORT | TODAY=$TODAY"
-```
-
-Usa estos valores en todos los pasos siguientes.
-
-## Paso 1: Verificar que no existe un borrador para este SHA
+## Paso 0: Leer los datos pre-cargados
 
 ```bash
-SHA_SHORT=$(echo "$GITHUB_SHA" | cut -c1-7)
-EXISTING=$(gh pr list --head "docs-draft/$SHA_SHORT" --state open --json number,title 2>/dev/null)
-echo "PRs existentes para docs-draft/$SHA_SHORT: $EXISTING"
+cat /tmp/gh-aw/data/context.json
+cat /tmp/gh-aw/data/commits.json
+cat /tmp/gh-aw/data/diff_stat.txt
+cat /tmp/gh-aw/data/diff.patch
 ```
 
-Si ya existe un PR abierto para `docs-draft/$SHA_SHORT`, **detente aquí** sin crear duplicado.
+Del archivo `context.json` extrae y usa siempre:
+- `repo_name`, `sha`, `sha_short`, `branch`, `today`, `timestamp`
+- `draft_filename` — ruta exacta donde escribir el borrador
+- `pr_branch` — nombre del branch para el PR (sin el prefijo `docs-draft/`)
+- `existing_draft_prs` — si tiene elementos, **detente aquí sin crear nada** (ya existe un PR para este commit)
 
-## Paso 2: Analizar los cambios del push
+## Paso 1: Evaluar si el push merece documentación
+
+Analiza `commits.json` y `diff.patch`. **Detente sin crear PR** si el push solo toca:
+- Archivos en `docs-drafts/`
+- Archivos de configuración interna (`.github/`, `.gitignore`, `.editorconfig`, linters, lock files)
+
+Si hay cambios documentables, continúa.
+
+## Paso 2: Crear el archivo de borrador
+
+Escribe el archivo en la ruta exacta de `draft_filename`. Usa Python para escribirlo:
 
 ```bash
-echo "=== Commits recientes ==="
-git log --oneline -20
-
-echo "=== Estadísticas del commit actual ==="
-git diff HEAD~1 HEAD --stat 2>/dev/null || echo "[Primer commit — análisis de estructura del repositorio]"
-
-echo "=== Diff detallado ==="
-git diff HEAD~1 HEAD 2>/dev/null || find . -type f -not -path './.git/*' -not -path './docs-drafts/*' | sort | head -100
-
-echo "=== Metadata de commits (SHA|autor|mensaje) ==="
-git log --format="%H|%an|%s" -10
+python3 - <<'PYEOF'
+import json, sys
+ctx = json.load(open('/tmp/gh-aw/data/context.json'))
+# escribe el contenido markdown completo en ctx['draft_filename']
+PYEOF
 ```
 
-Para cada commit, extrae:
-- SHA completo y corto (7 chars), tipo (`feat`/`fix`/`chore`/`refactor`/`docs`/`ci`), autor, mensaje
-- Archivos modificados y su propósito en el proyecto
-- **Impacto en documentación**: qué sección de docs se ve afectada y por qué razón
+O usa un heredoc bash. El archivo debe tener esta estructura (sin placeholders):
 
-**Condición de parada**: Si el push solo modifica archivos en `docs-drafts/` o configuración interna (`.github/`, `.gitignore`, `.editorconfig`, linters) sin impacto documentable para usuarios del proyecto, finaliza sin crear PR e indica el motivo.
-
-## Paso 3: Crear el archivo de borrador
-
-Genera el contenido completo del borrador y escríbelo en: `docs-drafts/{TODAY}-{REPO_NAME}-{SHA_SHORT}.md`
-
-El archivo debe seguir esta estructura:
-
-```
+```markdown
 ---
-generated_at: {TIMESTAMP_ISO8601}
-repository: {GITHUB_REPOSITORY}
-trigger_commit: {GITHUB_SHA}
-branch: {GITHUB_REF_NAME}
+generated_at: {timestamp}
+repository: {repository}
+trigger_commit: {sha}
+branch: {branch}
 status: pending-review
 ---
 
-# Borrador de Documentación: {REPO_NAME}
+# Borrador: {repo_name}
 
-> ⚠️ Requiere revisión humana antes de publicarse en Confluence.
-> Edita si es necesario, luego aprueba este PR para publicar automáticamente.
+> ⚠️ Requiere revisión humana. Edita si es necesario, luego mergea para publicar en Confluence.
 
 ## ¿Por qué se generó este borrador?
 
-{Explicación de qué cambió y por qué justifica actualizar la documentación}
-Commit disparador: [{SHA_SHORT}](https://github.com/{GITHUB_REPOSITORY}/commit/{GITHUB_SHA})
+{Explica qué cambió y por qué justifica actualizar la documentación.}
+Commit: [{sha_short}](https://github.com/{repository}/commit/{sha})
 
 ## Commits que originan esta actualización
 
-| SHA | Tipo | Mensaje | Autor | Impacto en documentación |
-|-----|------|---------|-------|--------------------------|
-| [{sha_corto}](https://github.com/{GITHUB_REPOSITORY}/commit/{sha_completo}) | {tipo} | {mensaje} | {autor} | {impacto específico en docs} |
-
-## Cambios propuestos en Confluence
-
-### 📝 Release Notes / Changelog
-
-{Texto real de changelog basado en los commits: qué cambió, por qué importa, impacto para usuarios}
-
-### [Solo si aplica] 🔌 API / Interfaces
-
-{Si hay nuevos endpoints, cambios de contrato o interfaces públicas}
-
-### [Solo si aplica] 🏗️ Arquitectura / DevOps
-
-{Si hay cambios en CI/CD, Dockerfile, infraestructura, configuración}
-
-### [Solo si aplica] 📚 Onboarding / Getting Started
-
-{Si hay cambios en README u otra documentación de inicio}
-
----
-
-## Instrucciones para el revisor
-
-1. Revisa el contenido propuesto en las secciones anteriores
-2. Edita este archivo si alguna descripción es incorrecta o incompleta
-3. **Mergea este PR** para publicar automáticamente en Confluence
-4. O **cierra el PR sin mergear** para descartar esta actualización
-
-> 🤖 Generado por `auto-release-notes-draft`
-```
-
-Crea el directorio y escribe el archivo completo (sin placeholders — omite las secciones que no apliquen):
-
-```bash
-mkdir -p docs-drafts
-REPO_NAME=$(echo "$GITHUB_REPOSITORY" | cut -d'/' -f2)
-SHA_SHORT=$(echo "$GITHUB_SHA" | cut -c1-7)
-TODAY=$(date -u +%Y-%m-%d)
-FILENAME="docs-drafts/${TODAY}-${REPO_NAME}-${SHA_SHORT}.md"
-echo "Escribiendo en: $FILENAME"
-# Usa Python o heredoc para escribir el contenido completo generado
-```
-
-Verifica que el archivo se creó correctamente:
-
-```bash
-cat "$FILENAME"
-```
-
-## Paso 4: Crear el Pull Request
-
-Usa la herramienta `create_pull_request` con estos campos:
-
-- **`branch`**: `{SHA_SHORT}` (el prefijo `docs-draft/` se añade automáticamente)
-- **`base`**: el valor de `$GITHUB_REF_NAME` (será `main` o `master`)
-- **`title`**: descripción concisa de los cambios documentados (el prefijo `📄 [docs-draft]` se añade automáticamente)
-- **`body`**: descripción del PR con la tabla de commits e instrucciones de revisión
-
-El cuerpo del PR debe incluir:
-
-```markdown
-## 📋 Borrador de documentación — revisión requerida
-
-Cambios detectados en `{GITHUB_REF_NAME}` tras el commit [`{SHA_SHORT}`](https://github.com/{GITHUB_REPOSITORY}/commit/{GITHUB_SHA}).
-
-### Commits incluidos
-
 | SHA | Tipo | Mensaje | Autor |
 |-----|------|---------|-------|
-| [`{sha}`](link) | {tipo} | {mensaje} | {autor} |
+| [`sha_short`](https://github.com/{repo}/commit/{sha}) | feat/fix/chore | mensaje | autor |
 
-### Cómo proceder
+## Cambios propuestos
 
-| Acción | Resultado |
-|--------|-----------|
-| ✅ **Mergear** | Publica automáticamente en Confluence |
-| ✏️ **Editar y mergear** | Publica la versión revisada |
-| ❌ **Cerrar sin mergear** | Descarta esta actualización |
+### 📝 Release Notes
+{Changelog concreto basado en los commits. Omite si no aplica.}
 
+### 🔌 API / Interfaces
+{Solo si hay nuevos endpoints o contratos. Omite si no aplica.}
+
+### 🏗️ Arquitectura / DevOps
+{Solo si hay cambios en CI/CD, Dockerfile, infra. Omite si no aplica.}
+
+### 📚 Onboarding / Getting Started
+{Solo si hay cambios en README u onboarding. Omite si no aplica.}
+
+---
 > 🤖 Generado por `auto-release-notes-draft`
 ```
 
-## Reglas
+Verifica que el archivo se creó:
 
-1. **No uses Confluence** en ningún momento de este workflow.
-2. **No incluyas secretos, tokens ni passwords** en el contenido del borrador.
-3. **No crees PR duplicados**: si ya existe uno para este SHA (Paso 1), detente.
-4. **No crees PR** si el push no tiene impacto documentable (solo `docs-drafts/`, `.github/`, configs).
-5. **El borrador debe ser concreto**: contenido real del análisis, sin placeholders ni textos genéricos.
+```bash
+cat {draft_filename}
+```
+
+## Paso 3: Crear el Pull Request
+
+Usa `create_pull_request` con:
+- `branch`: el valor de `pr_branch` del context.json
+- `base`: el valor de `branch` del context.json (`main` o `master`)
+- `title`: descripción concisa (el prefijo `📄 [docs-draft]` se añade automáticamente)
+- `body`: tabla de commits + instrucciones de revisión (mergear = publicar en Confluence, cerrar = descartar)
+
+## Reglas finales
+
+1. No uses Confluence ni ningún MCP externo.
+2. No incluyas secretos ni tokens en el borrador.
+3. Si `existing_draft_prs` tiene elementos en el Paso 0, detente sin crear nada.
+4. Si el push no tiene impacto documentable, usa `noop`.
+5. Todo el contenido debe ser concreto — sin placeholders ni textos genéricos.
