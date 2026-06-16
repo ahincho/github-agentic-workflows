@@ -145,7 +145,7 @@ Cada repositorio consumidor necesita configurar en **Settings → Secrets and va
 
 | Secret | Descripción | Cómo obtenerlo |
 |--------|-------------|----------------|
-| `ATLASSIAN_MCP_BASIC_TOKEN` | Credenciales Basic auth para el MCP Server de Atlassian (`https://mcp.atlassian.com/v1/mcp/authv2`). Valor: `base64(email:api_token)`. | 1. Crear token personal en [este link](https://id.atlassian.com/manage-profile/security/api-tokens?autofillToken&expiryDays=max&appId=mcp&selectedScopes=all). 2. Codificar: `echo -n "tu@email.com:TOKEN" \| base64`. 3. Guardar el resultado como secret. **Para CI/CD productivo usar service account** — ver `docs/atlassian-admin-setup.md`. |
+| `ATLASSIAN_MCP_BASIC_TOKEN` | Credenciales Basic auth para el MCP Server de Atlassian (`https://mcp.atlassian.com/v1/mcp`). Valor: `base64(email:api_token)`. | 1. Crear token personal en [este link](https://id.atlassian.com/manage-profile/security/api-tokens?autofillToken&expiryDays=max&appId=mcp&selectedScopes=all). 2. Codificar: `echo -n "tu@email.com:TOKEN" \| base64`. 3. Guardar el resultado como secret. **Para CI/CD productivo usar service account** — ver `docs/atlassian-admin-setup.md`. |
 | `COPILOT_GITHUB_TOKEN` | Token de GitHub Copilot para el engine de IA. | **Auto-gestionado por `gh-aw`** — no configurar manualmente. Lo provee la plataforma. |
 | `GITHUB_TOKEN` | Token estándar de GitHub Actions para leer repos, issues y PRs. | **Auto-inyectado por GitHub Actions** — no requiere configuración. |
 
