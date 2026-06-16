@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "github-agentic-workflows": {
+      "command": "gh",
+      "args": [
+        "aw",
+        "mcp-server"
+      ]
+    },
+    "atlassian": {
+      "type": "http",
+      "url": "https://mcp.atlassian.com/v1/mcp",
+      "headers": {
+        "Authorization": "Bearer ${env:ATLASSIAN_ROVO_MCP_TOKEN}"
+      }
+    }
+  }
+}
