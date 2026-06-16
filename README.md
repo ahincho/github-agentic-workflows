@@ -22,7 +22,7 @@ Solución de documentación automatizada que mantiene **activa la base de conoci
 
 ## Arquitectura
 
-La solución usa el **Atlassian Rovo MCP Server** (`https://mcp.atlassian.com/v1/mcp`) directamente desde el agente `gh-aw`. Esto es posible porque el servidor MCP de Atlassian es un servicio HTTP remoto con soporte de autenticación headless via API token, compatible nativamente con la directiva `mcp-servers: type: http` de `gh-aw`.
+La solución usa el **Atlassian Rovo MCP Server** (`https://mcp.atlassian.com/v1/mcp/authv2`) directamente desde el agente `gh-aw`. Esto es posible porque el servidor MCP de Atlassian es un servicio HTTP remoto con soporte de autenticación headless via API token, compatible nativamente con la directiva `mcp-servers: type: http` de `gh-aw`.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -145,7 +145,7 @@ Cada repositorio consumidor necesita configurar en **Settings → Secrets and va
 
 | Secret | Descripción | Cómo obtenerlo |
 |--------|-------------|----------------|
-| `ATLASSIAN_ROVO_MCP_TOKEN` | Token Bearer para autenticar contra el MCP Server de Atlassian Rovo (`https://mcp.atlassian.com/v1/mcp`). | Generar en Atlassian profile settings. Requiere que el admin habilite autenticación headless en **Atlassian Administration → Rovo MCP Server settings**. |
+| `ATLASSIAN_ROVO_MCP_TOKEN` | Token Bearer para autenticar contra el MCP Server de Atlassian Rovo (`https://mcp.atlassian.com/v1/mcp/authv2`). | Generar en Atlassian profile settings. Requiere que el admin habilite autenticación headless en **Atlassian Administration → Rovo MCP Server settings**. |
 | `COPILOT_GITHUB_TOKEN` | Token de GitHub Copilot para el engine de IA. | **Auto-gestionado por `gh-aw`** — no configurar manualmente. Lo provee la plataforma. |
 | `GITHUB_TOKEN` | Token estándar de GitHub Actions para leer repos, issues y PRs. | **Auto-inyectado por GitHub Actions** — no requiere configuración. |
 

@@ -19,7 +19,7 @@ imports:
 mcp-servers:
   atlassian:
     type: http
-    url: "https://mcp.atlassian.com/v1/mcp"
+    url: "https://mcp.atlassian.com/v1/mcp/authv2"
     headers:
       Authorization: "Bearer ${{ secrets.ATLASSIAN_ROVO_MCP_TOKEN }}"
 env:
