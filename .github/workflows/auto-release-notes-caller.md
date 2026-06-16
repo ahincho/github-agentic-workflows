@@ -22,14 +22,6 @@ mcp-servers:
     url: "https://mcp.atlassian.com/v1/mcp"
     headers:
       Authorization: "Bearer ${{ secrets.ATLASSIAN_ROVO_MCP_TOKEN }}"
-    allowed:
-      - getConfluencePage
-      - searchConfluenceUsingCql
-      - getConfluenceSpaces
-      - getPagesInConfluenceSpace
-      - getConfluencePageDescendants
-      - createConfluencePage
-      - updateConfluencePage
 env:
   CONFLUENCE_CLOUD_ID: ${{ vars.CONFLUENCE_CLOUD_ID }}
   CONFLUENCE_BASE_URL: ${{ vars.CONFLUENCE_BASE_URL }}
