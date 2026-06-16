@@ -90,6 +90,7 @@ safe-outputs:
       - master
     allowed-files:
       - "docs-drafts/**"
+      - "README.md"
     expires: 30
 ---
 
@@ -124,7 +125,13 @@ Analiza `commits.json` y `diff.patch`. **Detente sin crear PR** si el push solo 
 
 Si hay cambios documentables, continúa.
 
-## Paso 2: Crear el archivo de borrador
+## Paso 2: Actualizar README.md (si aplica)
+
+Si los commits incluyen cambios en la estructura del proyecto, nuevos módulos, comandos de instalación/uso o cualquier información relevante para un desarrollador nuevo, actualiza `README.md` en el directorio raíz con esa información. El README debe mantenerse al día con el estado real del proyecto.
+
+Si no hay cambios que justifiquen actualizar el README, omite este paso.
+
+## Paso 3: Crear el archivo de borrador
 
 Escribe el archivo en la ruta exacta de `draft_filename`. Usa Python para escribirlo:
 
@@ -186,7 +193,7 @@ Verifica que el archivo se creó:
 cat {draft_filename}
 ```
 
-## Paso 3: Crear el Pull Request
+## Paso 4: Crear el Pull Request
 
 Usa `create_pull_request` con:
 - `branch`: el valor de `pr_branch` del context.json
