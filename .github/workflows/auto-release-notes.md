@@ -1,7 +1,6 @@
 ---
 on:
-  push:
-    branches: [main]
+  workflow_call:
 permissions:
   contents: read
   issues: read
