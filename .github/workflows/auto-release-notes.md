@@ -8,7 +8,7 @@ permissions:
   pull-requests: read
 engine:
   id: copilot
-  model: ${{ vars.COPILOT_MODEL || 'gpt-4o' }}
+  model: ${{ vars.COPILOT_MODEL || 'claude-sonnet-4-5' }}
 network:
   allowed:
     - defaults
