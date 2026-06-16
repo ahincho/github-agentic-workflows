@@ -21,7 +21,7 @@ mcp-servers:
     type: http
     url: "https://mcp.atlassian.com/v1/mcp/authv2"
     headers:
-      Authorization: "Bearer ${{ secrets.ATLASSIAN_ROVO_MCP_TOKEN }}"
+      Authorization: "Basic ${{ secrets.ATLASSIAN_MCP_BASIC_TOKEN }}"
 env:
   CONFLUENCE_CLOUD_ID: ${{ vars.CONFLUENCE_CLOUD_ID }}
   CONFLUENCE_BASE_URL: ${{ vars.CONFLUENCE_BASE_URL }}
