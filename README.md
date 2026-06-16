@@ -1,83 +1,165 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# github-agentic-workflows
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Pipeline de documentación automatizada con **Human-in-the-Loop (HITL)** que mantiene viva la base de conocimiento en Confluence. Ante cada `push` a `main`, un agente LLM (GitHub Copilot con Claude Sonnet) analiza los cambios, genera un borrador markdown y abre un Pull Request para revisión humana. Al mergear el PR, el agente publica directamente en Confluence vía el MCP de Atlassian Rovo.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## Arquitectura — Pipeline en 2 Fases
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
-
-```bash
-$ npm install
+```
+push → main
+    │
+    ▼
+┌─────────────────────────────────┐
+│  Phase 1: auto-release-notes-   │
+│  draft (caller)                 │
+│                                 │
+│  • Lee datos pre-cargados       │
+│    (DataOps: git log/diff/gh)   │
+│  • Genera docs-drafts/*.md      │
+│  • Actualiza README.md          │
+│  • Abre PR docs-draft/{sha}     │
+└──────────────┬──────────────────┘
+               │ PR abierto para revisión humana
+               ▼
+        👤 Revisor edita / aprueba
+               │
+               ▼ merge
+┌─────────────────────────────────┐
+│  Phase 2: auto-release-notes-   │
+│  publish                        │
+│                                 │
+│  • Lee draft aprobado           │
+│  • Busca páginas existentes     │
+│    en Confluence (CQL)          │
+│  • Crea o actualiza páginas     │
+│    vía Atlassian Rovo MCP       │
+└─────────────────────────────────┘
 ```
 
-## Compile and run the project
+### Páginas que mantiene en Confluence (espacio `PLA`)
 
-```bash
-# development
-$ npm run start
+| Página | Descripción |
+|--------|-------------|
+| `[repo] Release Notes` | Changelog con tabla de commits linkeados a GitHub |
+| `[repo] Getting Started` | Guía de instalación y primeros pasos |
+| `[repo] Arquitectura / DevOps` | Stack técnico, CI/CD, estructura del proyecto |
+| `[repo] API e Interfaces` | Endpoints y contratos de la API |
 
-# watch mode
-$ npm run start:dev
+---
 
-# production mode
-$ npm run start:prod
+## Stack técnico
+
+| Capa | Tecnología |
+|------|-----------|
+| Framework backend | NestJS v11 (TypeScript) |
+| Runtime | Node.js |
+| CI/CD agéntico | GitHub Agentic Workflows (`gh aw`) |
+| Modelo LLM | Claude Sonnet 4.5 (via GitHub Copilot) |
+| Documentación destino | Confluence Cloud (Atlassian Rovo MCP) |
+| Optimización | DataOps pre-fetch (git log/diff fuera del sandbox LLM) |
+
+---
+
+## Estructura del proyecto
+
+```
+.github/
+├── workflows/
+│   ├── auto-release-notes-caller.md       # Phase 1 — genera borrador + abre PR
+│   ├── auto-release-notes-caller.lock.yml # Compilado (no editar)
+│   ├── auto-release-notes.md              # Phase 2 — publica en Confluence
+│   └── auto-release-notes.lock.yml        # Compilado (no editar)
+├── skills/
+│   └── agentic-workflows/SKILL.md
+docs/
+├── atlassian-admin-setup.md               # Guía para habilitar Rovo MCP
+└── agentic-workflows.md                   # Documentación técnica detallada
+docs-drafts/                               # Borradores generados automáticamente
+src/                                       # Código fuente NestJS
 ```
 
-## Run tests
+---
+
+## Requisitos previos
+
+### Secrets del repositorio
+
+| Secret | Valor |
+|--------|-------|
+| `COPILOT_GITHUB_TOKEN` | Token de GitHub Copilot con acceso al modelo |
+| `ATLASSIAN_MCP_BASIC_TOKEN` | `base64(email:api_token)` — token de Atlassian |
+
+### Variables del repositorio
+
+| Variable | Valor de ejemplo |
+|----------|-----------------|
+| `COPILOT_MODEL` | `claude-sonnet-4.5` |
+| `CONFLUENCE_BASE_URL` | `https://tu-org.atlassian.net` |
+| `CONFLUENCE_CLOUD_ID` | UUID del tenant de Atlassian |
+| `CONFLUENCE_SPACE_KEY` | Clave del espacio (ej. `PLA`) |
+| `CONFLUENCE_PARENT_PAGE_ID` | ID de la página padre en Confluence |
+
+### Permisos de GitHub Actions
+
+En **Settings → Actions → General → Workflow permissions**:
+- ☑ Read and write permissions
+- ☑ Allow GitHub Actions to create and approve pull requests
+
+### Atlassian Admin
+
+El administrador de Atlassian debe habilitar el toggle de API token:  
+**Atlassian Administration → Rovo → Rovo MCP server → Authentication → API token**
+
+Ver [docs/atlassian-admin-setup.md](docs/atlassian-admin-setup.md) para el paso a paso.
+
+---
+
+## Desarrollo local
 
 ```bash
-# unit tests
-$ npm run test
+# Instalar dependencias
+npm install
 
-# e2e tests
-$ npm run test:e2e
+# Iniciar en modo desarrollo
+npm run start:dev
 
-# test coverage
-$ npm run test:cov
+# Tests unitarios
+npm run test
+
+# Tests e2e
+npm run test:e2e
+
+# Compilar para producción
+npm run start:prod
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+### Compilar los workflows agénticos
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+# Requiere gh CLI + extensión gh-aw
+gh aw compile .github/workflows/auto-release-notes-caller.md
+gh aw compile .github/workflows/auto-release-notes.md
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+---
 
-## Resources
+## Cómo funciona el pipeline
 
-Check out a few resources that may come in handy when working with NestJS:
+1. **Push a `main`** → Phase 1 se dispara automáticamente
+2. **DataOps** — el runner ejecuta `git log`, `git diff` y `gh pr list` fuera del sandbox LLM, escribiendo JSON compacto en `/tmp/gh-aw/data/`
+3. **Agente** — Claude Sonnet lee los datos pre-cargados, evalúa si el cambio amerita documentación y genera el borrador en `docs-drafts/`
+4. **PR automático** — `safe_outputs` abre el PR `docs-draft/{sha}` con los archivos permitidos (`docs-drafts/**`, `README.md`)
+5. **Revisión humana** — el equipo revisa, edita si necesario, y mergea
+6. **Phase 2** — al mergear, el agente lee el draft aprobado y publica/actualiza páginas en Confluence vía MCP
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
+> Si el push no contiene cambios con impacto documentable (ej. commits de CI o configuración interna), el agente emite `noop` sin crear PR.
+
+---
+
+## Documentación en Confluence
+
+Las páginas publicadas están disponibles en el espacio `PLA` de `inlearning.atlassian.net` bajo la página padre configurada en `CONFLUENCE_PARENT_PAGE_ID`.
 - Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
 - Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
 - To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
