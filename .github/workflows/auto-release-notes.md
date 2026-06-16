@@ -41,22 +41,29 @@ safe-outputs:
 
 Actúa como un **Technical Writer y Arquitecto DevOps** experto en documentación de software empresarial. Tu objetivo es **mantener activa la documentación del proyecto en Confluence** como fuente de conocimiento centralizada. No solo generas notas de release — analizas el estado actual de la documentación y la actualizas inteligentemente.
 
-## Paso 1: Leer el estado actual de la documentación en Confluence
+## Paso 0: Leer la configuración del entorno
 
-Antes de analizar cualquier cambio de código, consulta el estado de la documentación existente.
-
-Las siguientes variables de entorno están disponibles con la configuración del espacio destino:
+**PRIMERO** ejecuta este comando bash para obtener los valores reales de configuración:
 
 ```bash
-echo "Cloud ID:        $CONFLUENCE_CLOUD_ID"
-echo "Base URL:        $CONFLUENCE_BASE_URL"
-echo "Space Key:       $CONFLUENCE_SPACE_KEY"
-echo "Parent Page ID:  $CONFLUENCE_PARENT_PAGE_ID"
+echo "CONFLUENCE_CLOUD_ID=$CONFLUENCE_CLOUD_ID"
+echo "CONFLUENCE_BASE_URL=$CONFLUENCE_BASE_URL"
+echo "CONFLUENCE_SPACE_KEY=$CONFLUENCE_SPACE_KEY"
+echo "CONFLUENCE_PARENT_PAGE_ID=$CONFLUENCE_PARENT_PAGE_ID"
+echo "GITHUB_REPOSITORY=$GITHUB_REPOSITORY"
+echo "GITHUB_REF_NAME=$GITHUB_REF_NAME"
+echo "GITHUB_SHA=$GITHUB_SHA"
 ```
 
-1. Usa `searchConfluenceUsingCql` con cloudId `$CONFLUENCE_CLOUD_ID` y la query:
+Usa los valores reales impresos por ese comando en todos los pasos siguientes. No uses los nombres de variable como strings literales.
+
+## Paso 1: Leer el estado actual de la documentación en Confluence
+
+Antes de analizar cualquier cambio de código, consulta el estado de la documentación existente usando los valores obtenidos en el Paso 0.
+
+1. Usa `searchConfluenceUsingCql` con el cloudId y spaceKey obtenidos, y la query:
    ```
-   space = "$CONFLUENCE_SPACE_KEY" AND title ~ "[REPO_NAME]" AND type = page
+   space = "SPACE_KEY_REAL" AND title ~ "REPO_NAME_REAL" AND type = page
    ```
    para encontrar todas las páginas del repositorio ya documentadas.
 3. Para cada página encontrada relevante, usa `getConfluencePage` para leer su contenido actual.
