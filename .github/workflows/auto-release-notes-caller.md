@@ -30,6 +30,11 @@ mcp-servers:
       - getConfluencePageDescendants
       - createConfluencePage
       - updateConfluencePage
+env:
+  CONFLUENCE_CLOUD_ID: ${{ vars.CONFLUENCE_CLOUD_ID }}
+  CONFLUENCE_BASE_URL: ${{ vars.CONFLUENCE_BASE_URL }}
+  CONFLUENCE_SPACE_KEY: ${{ vars.CONFLUENCE_SPACE_KEY }}
+  CONFLUENCE_PARENT_PAGE_ID: ${{ vars.CONFLUENCE_PARENT_PAGE_ID }}
 tools:
   github:
     toolsets: [default]
@@ -56,9 +61,14 @@ echo "Repo: $GITHUB_REPOSITORY"
 echo "$GITHUB_REPOSITORY" | cut -d'/' -f2
 ```
 
-- Usa `getConfluenceSpaces` para descubrir los espacios disponibles e identificar el espacio destino.
-- Usa `searchConfluenceUsingCql` con la query:
-  `title ~ "[nombre-del-repo]" AND type = page AND space.type = "global"`
+Las variables de entorno con la configuración de Confluence ya están disponibles:
+
+```bash
+echo "Cloud ID: $CONFLUENCE_CLOUD_ID | Space: $CONFLUENCE_SPACE_KEY | Parent: $CONFLUENCE_PARENT_PAGE_ID"
+```
+
+- Usa `searchConfluenceUsingCql` con cloudId `$CONFLUENCE_CLOUD_ID` y la query:
+  `space = "$CONFLUENCE_SPACE_KEY" AND title ~ "[nombre-del-repo]" AND type = page`
   donde `nombre-del-repo` es el valor extraído de `$GITHUB_REPOSITORY`.
 - Para cada página encontrada, usa `getConfluencePage` para leer su contenido actual.
 - Identifica qué páginas ya existen: Release Notes, Arquitectura, API, Onboarding.

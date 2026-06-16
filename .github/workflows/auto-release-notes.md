@@ -30,6 +30,11 @@ mcp-servers:
       - getConfluencePageDescendants
       - createConfluencePage
       - updateConfluencePage
+env:
+  CONFLUENCE_CLOUD_ID: ${{ vars.CONFLUENCE_CLOUD_ID }}
+  CONFLUENCE_BASE_URL: ${{ vars.CONFLUENCE_BASE_URL }}
+  CONFLUENCE_SPACE_KEY: ${{ vars.CONFLUENCE_SPACE_KEY }}
+  CONFLUENCE_PARENT_PAGE_ID: ${{ vars.CONFLUENCE_PARENT_PAGE_ID }}
 tools:
   github:
     toolsets: [default]
@@ -49,10 +54,18 @@ Actúa como un **Technical Writer y Arquitecto DevOps** experto en documentació
 
 Antes de analizar cualquier cambio de código, consulta el estado de la documentación existente.
 
-1. Usa `getConfluenceSpaces` para confirmar el espacio objetivo (si no lo conoces).
-2. Usa `searchConfluenceUsingCql` con una query como:
+Las siguientes variables de entorno están disponibles con la configuración del espacio destino:
+
+```bash
+echo "Cloud ID:        $CONFLUENCE_CLOUD_ID"
+echo "Base URL:        $CONFLUENCE_BASE_URL"
+echo "Space Key:       $CONFLUENCE_SPACE_KEY"
+echo "Parent Page ID:  $CONFLUENCE_PARENT_PAGE_ID"
+```
+
+1. Usa `searchConfluenceUsingCql` con cloudId `$CONFLUENCE_CLOUD_ID` y la query:
    ```
-   space = "SPACE_KEY" AND title ~ "[REPO_NAME]" AND type = page
+   space = "$CONFLUENCE_SPACE_KEY" AND title ~ "[REPO_NAME]" AND type = page
    ```
    para encontrar todas las páginas del repositorio ya documentadas.
 3. Para cada página encontrada relevante, usa `getConfluencePage` para leer su contenido actual.
