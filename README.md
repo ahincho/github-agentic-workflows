@@ -139,11 +139,38 @@ Componente alternativo que publica en Confluence via REST API v1 usando un Safe 
 
 Cada repositorio consumidor necesita configurar en **Settings → Secrets and variables → Actions**:
 
-### Secreto requerido
+### Secrets
 
-| Secreto | Descripción |
-|---------|-------------|
-| `ATLASSIAN_ROVO_MCP_TOKEN` | API token con scope Rovo MCP, generado en Atlassian profile settings. Requiere que el admin habilite autenticación headless. |
+#### Requeridos
+
+| Secret | Descripción | Cómo obtenerlo |
+|--------|-------------|----------------|
+| `ATLASSIAN_ROVO_MCP_TOKEN` | Token Bearer para autenticar contra el MCP Server de Atlassian Rovo (`https://mcp.atlassian.com/v1/mcp`). | Generar en Atlassian profile settings. Requiere que el admin habilite autenticación headless en **Atlassian Administration → Rovo MCP Server settings**. |
+| `COPILOT_GITHUB_TOKEN` | Token de GitHub Copilot para el engine de IA. | **Auto-gestionado por `gh-aw`** — no configurar manualmente. Lo provee la plataforma. |
+| `GITHUB_TOKEN` | Token estándar de GitHub Actions para leer repos, issues y PRs. | **Auto-inyectado por GitHub Actions** — no requiere configuración. |
+
+#### Opcionales (solo con fallback REST API vía `confluence-publisher.md`)
+
+| Secret | Descripción |
+|--------|-------------|
+| `CONFLUENCE_USER_EMAIL` | Email de la cuenta de servicio de Atlassian. |
+| `CONFLUENCE_API_TOKEN` | Token de API clásico de Atlassian, generado en [id.atlassian.com](https://id.atlassian.com/manage-profile/security/api-tokens). |
+
+#### Opcionales avanzados (normalmente no se configuran manualmente)
+
+| Secret | Descripción |
+|--------|-------------|
+| `GH_AW_GITHUB_TOKEN` | Token alternativo para el GitHub MCP Server. Si no existe, usa `GITHUB_TOKEN`. |
+| `GH_AW_GITHUB_MCP_SERVER_TOKEN` | Token específico para el GitHub MCP Server (más granular). Fallback: `GH_AW_GITHUB_TOKEN` → `GITHUB_TOKEN`. |
+
+### Variables
+
+| Variable | Obligatorio | Valor por defecto | Descripción |
+|----------|-------------|-------------------|-------------|
+| `COPILOT_MODEL` | No | `gpt-4o` | Modelo LLM a usar. Valores posibles: `gpt-4o`, `gpt-4.1`, `o3`, `claude-sonnet-4-5`. Si no se configura, usa `gpt-4o`. |
+| `GH_AW_DEFAULT_MAX_AI_CREDITS` | No | `1000` | Límite de créditos de IA por ejecución del agente. |
+| `GH_AW_DEFAULT_MAX_DAILY_AI_CREDITS` | No | `5000` | Límite de créditos de IA por día por usuario. |
+| `GH_AW_DEFAULT_MAX_TURNS` | No | sin límite | Máximo de turnos del agente por ejecución. |
 
 ### Contexto del agente (recomendado)
 
