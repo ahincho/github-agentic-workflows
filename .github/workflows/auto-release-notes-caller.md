@@ -6,7 +6,9 @@ permissions:
   contents: read
   issues: read
   pull-requests: read
-engine: copilot
+engine:
+  id: copilot
+  model: ${{ vars.COPILOT_MODEL || 'gpt-4o' }}
 network:
   allowed:
     - defaults
