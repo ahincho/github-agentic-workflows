@@ -1,6 +1,8 @@
 ---
 on:
-  workflow_call:
+  pull_request:
+    types: [closed]
+    branches: [main, master]
 permissions:
   contents: read
   issues: read
@@ -22,6 +24,8 @@ mcp-servers:
     headers:
       Authorization: "Basic ${{ secrets.ATLASSIAN_MCP_BASIC_TOKEN }}"
 env:
+  PR_MERGED: ${{ github.event.pull_request.merged }}
+  PR_HEAD_REF: ${{ github.head_ref }}
   CONFLUENCE_CLOUD_ID: ${{ vars.CONFLUENCE_CLOUD_ID }}
   CONFLUENCE_BASE_URL: ${{ vars.CONFLUENCE_BASE_URL }}
   CONFLUENCE_SPACE_KEY: ${{ vars.CONFLUENCE_SPACE_KEY }}
@@ -37,13 +41,26 @@ safe-outputs:
     max: 1
 ---
 
-# auto-release-notes
+# auto-release-notes-publish
 
-Actúa como un **Technical Writer y Arquitecto DevOps** experto en documentación de software empresarial. Tu objetivo es **mantener activa la documentación del proyecto en Confluence** como fuente de conocimiento centralizada. No solo generas notas de release — analizas el estado actual de la documentación y la actualizas inteligentemente.
+Actúa como **Technical Writer y Arquitecto DevOps**. Tu objetivo es **publicar en Confluence** la documentación que ya fue revisada y aprobada por un humano a través de un Pull Request de borrador.
 
-## Paso 0: Leer la configuración del entorno
+## Paso 0: Verificar que este es un PR de docs-draft mergeado
 
-**PRIMERO** ejecuta este comando bash para obtener los valores reales de configuración:
+**Primera verificación crítica.** Ejecuta:
+
+```bash
+echo "PR_MERGED=$PR_MERGED"
+echo "PR_HEAD_REF=$PR_HEAD_REF"
+```
+
+**Condición de parada inmediata**: Si `PR_MERGED` no es `"true"`, o si `PR_HEAD_REF` no comienza con `docs-draft/`, **detente aquí sin hacer nada más**. Este workflow se activa para todos los PRs cerrados hacia main/master; solo debe continuar para PRs de borrador de documentación mergeados.
+
+Continúa únicamente si ambas condiciones se cumplen:
+1. `PR_MERGED` es `"true"` → el PR fue mergeado (no solo cerrado)
+2. `PR_HEAD_REF` empieza con `docs-draft/` → es un PR de borrador de documentación
+
+## Paso 1: Leer la configuración del entorno
 
 ```bash
 echo "CONFLUENCE_CLOUD_ID=$CONFLUENCE_CLOUD_ID"
@@ -51,79 +68,65 @@ echo "CONFLUENCE_BASE_URL=$CONFLUENCE_BASE_URL"
 echo "CONFLUENCE_SPACE_KEY=$CONFLUENCE_SPACE_KEY"
 echo "CONFLUENCE_PARENT_PAGE_ID=$CONFLUENCE_PARENT_PAGE_ID"
 echo "GITHUB_REPOSITORY=$GITHUB_REPOSITORY"
-echo "GITHUB_REF_NAME=$GITHUB_REF_NAME"
-echo "GITHUB_SHA=$GITHUB_SHA"
+echo "PR_HEAD_REF=$PR_HEAD_REF"
 ```
 
-Usa los valores reales impresos por ese comando en todos los pasos siguientes. No uses los nombres de variable como strings literales.
+Usa los valores reales impresos en todos los pasos siguientes. Nunca uses los nombres de variable como strings literales.
 
-## Paso 1: Leer el estado actual de la documentación en Confluence
-
-Antes de analizar cualquier cambio de código, consulta el estado de la documentación existente usando los valores obtenidos en el Paso 0.
-
-1. Usa `searchConfluenceUsingCql` con el cloudId y spaceKey obtenidos, y la query:
-   ```
-   space = "SPACE_KEY_REAL" AND title ~ "REPO_NAME_REAL" AND type = page
-   ```
-   para encontrar todas las páginas del repositorio ya documentadas.
-3. Para cada página encontrada relevante, usa `getConfluencePage` para leer su contenido actual.
-
-Construye internamente un mapa de documentación existente:
-- ¿Existe una página de Release Notes / Changelog?
-- ¿Existe una página de Arquitectura?
-- ¿Existe una página de API / Interfaces?
-- ¿Existe una página de Onboarding / Getting Started?
-
-## Paso 2: Analizar los cambios del repositorio
-
-Ejecuta los siguientes comandos para obtener contexto del push actual:
+## Paso 2: Leer el archivo de borrador aprobado
 
 ```bash
-echo "Repositorio: $GITHUB_REPOSITORY"
-echo "Branch: $GITHUB_REF_NAME"
-echo "Commit SHA: $GITHUB_SHA"
-git log --oneline -20
-git diff HEAD~1 HEAD --stat 2>/dev/null || echo "Primer commit"
+SHA_SHORT="${PR_HEAD_REF#docs-draft/}"
+echo "SHA del borrador: $SHA_SHORT"
+
+DRAFT_FILE=$(ls docs-drafts/*-${SHA_SHORT}.md 2>/dev/null | head -1)
+echo "Archivo de borrador: $DRAFT_FILE"
+
+if [ -z "$DRAFT_FILE" ]; then
+  echo "ERROR: No se encontró el archivo de borrador para SHA $SHA_SHORT"
+  ls docs-drafts/ 2>/dev/null || echo "Directorio docs-drafts vacío o inexistente"
+  exit 1
+fi
+
+cat "$DRAFT_FILE"
 ```
 
-Si `HEAD~1` existe, obtén el diff completo:
+Analiza el contenido del archivo. Identifica:
+- Las secciones de documentación propuestas (Release Notes, API, Arquitectura, Onboarding)
+- La tabla de commits que originaron los cambios (con SHA, tipo, mensaje, autor)
+- El repositorio y branch de origen (del frontmatter YAML del archivo)
 
-```bash
-git diff HEAD~1 HEAD
-```
+## Paso 3: Consultar el estado actual en Confluence
 
-Si no existe (primer commit), analiza la estructura completa:
+Con los valores reales del Paso 1, usa `searchConfluenceUsingCql` para buscar páginas existentes:
 
-```bash
-find . -type f -not -path './.git/*' | sort | head -150
-```
+Query: `space = "{SPACE_KEY_REAL}" AND title ~ "{REPO_NAME}" AND type = page`
 
-## Paso 3: Determinar qué documentación crear o actualizar
+Donde `REPO_NAME` es la parte después del `/` en `$GITHUB_REPOSITORY`.
 
-Basándote en el diff y el mapa de documentación existente, decide qué páginas requieren acción:
+Para cada página relevante encontrada, usa `getConfluencePage` para leer su contenido actual.
 
-| Condición | Acción |
-|-----------|--------|
-| Cambios en código fuente (`src/`, `lib/`, clases públicas) | Actualizar Release Notes; revisar si afecta Arquitectura |
-| Nuevos endpoints, rutas o contratos de API | Actualizar o crear página de API/Interfaces |
-| Cambios en `README.md` o `docs/` | Sincronizar con la página de Onboarding |
-| Cambios en CI/CD, Dockerfile, infra | Actualizar página de Arquitectura/DevOps |
-| Primera ejecución (primer commit o página no existe) | Crear páginas base completas |
+Construye un mapa de qué páginas ya existen:
+- ¿Existe Release Notes / Changelog?
+- ¿Existe API / Interfaces?
+- ¿Existe Arquitectura / DevOps?
+- ¿Existe Onboarding / Getting Started?
 
-**Regla de actualización inteligente:** Si la página ya existe, **lee su contenido actual** con `getConfluencePage`, identifica las secciones que deben cambiar y actualiza solo esas secciones, preservando el resto.
+## Paso 4: Convertir el borrador a Confluence Storage Format (XHTML)
 
-## Paso 4: Generar el contenido en formato Confluence
+Para cada sección del borrador, convierte el markdown a XHTML de Confluence.
 
-El contenido debe estar en **Confluence Storage Format (XHTML)**. Estructura estándar para la página principal de Release Notes:
+Estructura base para la página de Release Notes:
 
 ```xml
-<h1>Documentación del Proyecto — {nombre-del-repositorio}</h1>
+<h1>Documentación del Proyecto — {repo-name}</h1>
 
 <ac:structured-macro ac:name="info">
   <ac:rich-text-body>
     <p><strong>Última actualización:</strong> {fecha-ISO-8601}</p>
     <p><strong>Commit:</strong> <a href="https://github.com/{owner}/{repo}/commit/{sha}">{sha-corto}</a></p>
     <p><strong>Branch:</strong> {branch}</p>
+    <p><strong>Revisado y aprobado</strong> mediante PR de documentación</p>
     <p><strong>Mantenido automáticamente</strong> por el workflow <em>auto-release-notes</em></p>
   </ac:rich-text-body>
 </ac:structured-macro>
@@ -145,33 +148,41 @@ El contenido debe estar en **Confluence Storage Format (XHTML)**. Estructura est
     <tr><th>Fecha</th><th>Commit</th><th>Descripción</th><th>Categoría</th></tr>
   </thead>
   <tbody>
-    <tr><td>{fecha}</td><td>{sha-corto}</td><td>{mensaje}</td><td>{Feature/Fix/Chore}</td></tr>
+    <tr>
+      <td>{fecha}</td>
+      <td><a href="https://github.com/{owner}/{repo}/commit/{sha}">{sha-corto}</a></td>
+      <td>{mensaje}</td>
+      <td>{Feature/Fix/Chore}</td>
+    </tr>
   </tbody>
 </table>
 ```
 
 ## Paso 5: Publicar en Confluence
 
-Para cada página a crear o actualizar:
+Para cada sección del borrador que requiere una página en Confluence:
 
-- Si la página **no existe**: usa `createConfluencePage` con:
-  - `spaceId`: el ID del espacio Confluence
-  - `title`: `[{repo-name}] {tipo-de-página}` (e.g., `[mi-repo] Release Notes`)
-  - `parentId`: si existe un parent page ID (de la variable de configuración)
-  - `body`: el XHTML generado
+- **Si la página no existe**: usa `createConfluencePage` con:
+  - `spaceId`: valor real de `$CONFLUENCE_SPACE_KEY`
+  - `title`: `[{repo-name}] Release Notes` (u otro tipo según la sección)
+  - `parentId`: valor real de `$CONFLUENCE_PARENT_PAGE_ID`
+  - `body`: el XHTML generado en el Paso 4
 
-- Si la página **ya existe**: usa `updateConfluencePage` con:
-  - `pageId`: el ID de la página encontrada en el Paso 1
-  - `title`: el mismo título existente (no cambiarlo)
-  - `body`: el contenido actualizado
-  - `version`: la versión actual + 1
+- **Si la página ya existe**: usa `updateConfluencePage` con:
+  - `pageId`: el ID encontrado en el Paso 3
+  - `title`: el mismo título existente (no cambiar)
+  - `body`: contenido actualizado (preserva historial anterior, agrega nuevas entradas al inicio)
+  - `version`: versión actual + 1
 
-## Reglas estrictas
+## Reglas
 
-1. **No expongas información sensible**: nunca incluyas tokens, passwords, keys, o secrets en el contenido.
-2. **Preserve la historia**: al actualizar, no borres entradas del historial existente; agrega las nuevas al inicio de la tabla.
-3. **Títulos con prefijo de repo**: todos los títulos deben comenzar con `[nombre-repo]` para diferenciarlos en espacios compartidos.
-4. **Fechas en ISO 8601**: usa formato `YYYY-MM-DD HH:mm UTC`.
-5. **Omite secciones vacías**: si no hay bugfixes en este push, no incluyas la sección Correcciones.
-6. **Límite de contenido**: el XHTML no debe exceder 50,000 caracteres por página.
-7. **Si el MCP falla o no está disponible**: crea un issue de GitHub con el contenido generado para revisión manual.
+1. **Solo publica si el PR fue mergeado** (Paso 0 es obligatorio y determina si continuar).
+2. **No expongas información sensible**: nunca incluyas tokens, passwords, keys ni secrets.
+3. **Preserva la historia**: al actualizar, agrega nuevas entradas al inicio; no borres las existentes.
+4. **Títulos con prefijo de repo**: todos deben comenzar con `[nombre-repo]`.
+5. **Fechas en ISO 8601**: usa formato `YYYY-MM-DD HH:mm UTC`.
+6. **Omite secciones vacías**: si no hay bugfixes, no incluyas la sección Correcciones.
+7. **Límite de contenido**: el XHTML no debe exceder 50,000 caracteres por página.
+8. **Si el MCP falla**: crea un issue de GitHub con el contenido generado para revisión manual.
+
+
